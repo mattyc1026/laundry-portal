@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "node --test test/logic.test.mjs test/sync.test.mjs",
+    "test": "node --test test/logic.test.mjs test/sync.test.mjs test/contrast.test.mjs",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },

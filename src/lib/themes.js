@@ -1241,6 +1241,125 @@ export const THEMES = {
   },
 };
 
+
+/* ==========================================================================
+   Readability
+
+   Themes are hand picked palettes, so some of them put a badge colour on a
+   background it cannot be read against. Rather than hand tuning 27 palettes
+   and hoping, the readable colours are computed from the palette itself
+   every time a theme is applied.
+
+   Targets WCAG AA, 4.5:1 for text.
+   ========================================================================== */
+
+const AA = 4.5;
+
+function toRgb(value) {
+  let h = String(value || '').trim().replace('#', '');
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return null;
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+}
+
+function toHex(rgb) {
+  return `#${rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function luminance(rgb) {
+  const s = rgb.map((v) => {
+    const x = v / 255;
+    return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2];
+}
+
+function contrast(a, b) {
+  const la = luminance(a);
+  const lb = luminance(b);
+  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+function blend(a, b, t) {
+  return a.map((v, i) => v + (b[i] - a[i]) * t);
+}
+
+/** Black or white, whichever is more readable on this background. */
+function readableOn(background, fallback = '#ffffff') {
+  const bg = toRgb(background);
+  if (!bg) return fallback;
+  const white = [255, 255, 255];
+  const black = [10, 12, 18];
+  return contrast(bg, white) >= contrast(bg, black) ? '#ffffff' : toHex(black);
+}
+
+/**
+ * Nudges a colour toward whichever pole gives contrast until it clears the
+ * target. Keeps the theme's own hue wherever the palette already works, and
+ * only intervenes where it does not.
+ */
+function ensureContrast(foreground, background, target = AA) {
+  const fg = toRgb(foreground);
+  const bg = toRgb(background);
+  if (!fg || !bg) return foreground;
+  if (contrast(fg, bg) >= target) return foreground;
+
+  const pole = toRgb(readableOn(background));
+  for (let t = 0.1; t <= 1.0001; t += 0.1) {
+    const candidate = blend(fg, pole, t);
+    if (contrast(candidate, bg) >= target) return toHex(candidate);
+  }
+  return toHex(pole);
+}
+
+/**
+ * A mid tone accent can be unreadable against both white and black, so no
+ * choice of text colour fixes it. In that case the badge surface itself is
+ * darkened or lightened until readable text is possible, keeping the hue.
+ */
+function badgeSurface(color) {
+  const rgb = toRgb(color);
+  if (!rgb) return { bg: color, fg: '#ffffff' };
+
+  const white = [255, 255, 255];
+  const black = [10, 12, 18];
+  const towardWhite = contrast(rgb, black) >= contrast(rgb, white);
+  const pole = towardWhite ? white : black;
+  const away = towardWhite ? black : white;
+
+  let surface = rgb;
+  for (let t = 0; t <= 1.0001; t += 0.06) {
+    surface = blend(rgb, pole, t);
+    if (contrast(surface, away) >= AA + 0.15) break;
+  }
+  return { bg: toHex(surface), fg: toHex(away) };
+}
+
+/**
+ * Derived variables the components use for anything sitting on a coloured
+ * surface. Computed per theme so no palette can produce an unreadable badge.
+ */
+function derivedContrast(v) {
+  const card = v['--bg-card'];
+  const accent = badgeSurface(v['--accent']);
+  const accent2 = badgeSurface(v['--accent2']);
+  const danger = badgeSurface(v['--danger']);
+  return {
+    '--accent-badge': accent.bg,
+    '--accent2-badge': accent2.bg,
+    '--danger-badge': danger.bg,
+    '--on-accent': accent.fg,
+    '--on-accent2': accent2.fg,
+    '--on-danger': danger.fg,
+    '--on-towel': ensureContrast(v['--towel-text'], v['--towel-bg']),
+    '--on-input': ensureContrast(v['--text-secondary'], v['--bg-input']),
+    // Secondary text tiers, pulled up only where the palette falls short.
+    '--text-muted-safe': ensureContrast(v['--text-muted'], card),
+    '--text-faint-safe': ensureContrast(v['--text-faint'], card, 4.0),
+  };
+}
+
 export const DEFAULT_THEME = 'dark';
 
 /** Weekday colours 1 to 3, derived so every theme covers the full week. */
@@ -1277,7 +1396,11 @@ export function applyTheme(id) {
   const resolved = THEMES[id] ? id : DEFAULT_THEME;
   const theme = THEMES[resolved];
   const root = document.documentElement;
-  const all = { ...theme.vars, ...fillWeekdayColours(theme.vars) };
+  const all = {
+    ...theme.vars,
+    ...fillWeekdayColours(theme.vars),
+    ...derivedContrast(theme.vars),
+  };
   Object.entries(all).forEach(([name, value]) => {
     root.style.setProperty(name, value);
   });
