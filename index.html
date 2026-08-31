@@ -2,13 +2,104 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/laundry-portal/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>laundry-portal</title>
-    <script type="module" crossorigin src="/laundry-portal/assets/index-5lseH2dT.js"></script>
-    <link rel="stylesheet" crossorigin href="/laundry-portal/assets/index-nqMpL4T3.css">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+
+    <title>Cunning Family Laundry Portal</title>
+    <meta
+      name="description"
+      content="Household laundry schedule, day requests and towel rotation."
+    />
+
+    <!-- Icons. The favicon, the browser tab, the iOS home screen and the
+         installed desktop app all come from the same artwork. -->
+    <link rel="icon" href="./favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="./icons/icon-16.png" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <!-- Standalone behaviour when added to an iOS home screen -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Laundry" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="theme-color" content="#05070e" />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- Link previews -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Cunning Family Laundry Portal" />
+    <meta
+      property="og:description"
+      content="Household laundry schedule, day requests and towel rotation."
+    />
+    <meta property="og:image" content="./icons/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <style>
+      /* Painted before the bundle arrives so the first frame is the brand
+         colour rather than a white flash. */
+      html {
+        background: #05070e;
+      }
+      @media (prefers-color-scheme: light) {
+        html {
+          background: #eef2fa;
+        }
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+      }
+      #boot img {
+        width: 74px;
+        height: 74px;
+        border-radius: 21px;
+        animation: boot-pulse 1.5s ease-in-out infinite;
+      }
+      @keyframes boot-pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 0.85;
+        }
+        50% {
+          transform: scale(1.06);
+          opacity: 1;
+        }
+      }
+      #root:not(:empty) + #boot {
+        opacity: 0;
+        pointer-events: none;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot img {
+          animation: none;
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="/laundry-portal/assets/index-CGBJMr5k.js"></script>
+    <link rel="stylesheet" crossorigin href="/laundry-portal/assets/index-BFavXFV9.css">
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot" aria-hidden="true">
+      <img src="./icons/icon-192.png" alt="" width="74" height="74" />
+    </div>
+    <noscript>
+      <p style="font-family: system-ui; padding: 24px; color: #f4f7ff">
+        This portal needs JavaScript switched on.
+      </p>
+    </noscript>
   </body>
 </html>
