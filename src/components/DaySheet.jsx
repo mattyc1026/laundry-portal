@@ -13,17 +13,20 @@ import {
   toTimeValue,
 } from '../lib/time.js';
 import { bookingsOf, groupForUser, myUpcomingBookings } from '../lib/schedule.js';
-import { book, removeBooking, resetDay, setBlocked } from '../lib/store.js';
+import { ADMIN_USER, book, removeBooking, resetDay, setBlocked } from '../lib/store.js';
 import { haptic } from '../lib/haptics.js';
 
 /**
- * Everything you can do to a date lives here: book all day or a slot, take
- * time that belongs to someone else, block the day, or clear it. There are
- * no separate admin screens for this, so whoever opens a day sees the same
- * controls.
+ * Everything you can do to a date lives here: book all day or a slot, or
+ * take time that belongs to someone else once you have their permission.
+ *
+ * Blocking and restoring a day sit behind the admin check, since those
+ * change the schedule for the whole household rather than for the people
+ * doing the swap.
  */
 export default function DaySheet({ day, state, viewer, dispatch, push, onClose }) {
   const myGroup = groupForUser(state, viewer.id);
+  const isAdmin = viewer.id === ADMIN_USER;
   const current = useMemo(() => bookingsOf(state, day.key), [state, day.key]);
 
   const [mode, setMode] = useState('idle'); // idle | allday | slot
@@ -300,11 +303,12 @@ export default function DaySheet({ day, state, viewer, dispatch, push, onClose }
         </div>
       ) : null}
 
-      {/* ---- Day controls, open to everyone -------------------------------- */}
-      {mode === 'idle' && !day.isPast ? (
+      {/* ---- Admin only. Blocking and restoring change the schedule for
+           everyone, unlike booking, which only affects the people involved. */}
+      {mode === 'idle' && !day.isPast && isAdmin ? (
         <>
           <div className="section-head">
-            <h3 className="section-title">Day controls</h3>
+            <h3 className="section-title">Admin controls</h3>
           </div>
           <div className="rows">
             <div className="row">

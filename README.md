@@ -68,15 +68,18 @@ calendar, and as a banner at the top explaining what is expected.
 Blocking a day stops anyone being scheduled. **Unblocking leaves the day
 open** rather than handing it back to whoever normally has it.
 
+Blocking and restoring a day are admin only, since they change the schedule
+for the whole household. Booking, swapping and releasing are open to
+everyone.
+
 ## Admin
 
 The Admin tab is visible only to `matthewc`. Michael signs in separately as
 `miker` and does not see it, even though they share one calendar entry.
 
-It is read only: who has signed up, who has not yet claimed their username,
-and a history of every action taken in the portal. All schedule editing,
-including blocking and removing people, is done from the day itself by
-whoever needs it.
+The tab itself is read only: who has signed up and a history of every action
+taken in the portal. The admin's extra powers appear on the day sheet, where
+blocking and restoring a day are shown only to them.
 
 ## Settings
 
