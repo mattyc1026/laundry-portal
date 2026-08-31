@@ -21,7 +21,7 @@ import { haptic } from '../lib/haptics.js';
  * take time that belongs to someone else once you have their permission.
  *
  * Blocking and restoring a day sit behind the admin check, since those
- * change the schedule for the whole household rather than for the people
+ * change the schedule for everyone rather than just for the people
  * doing the swap.
  */
 export default function DaySheet({ day, state, viewer, dispatch, push, onClose }) {

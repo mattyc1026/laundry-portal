@@ -17,7 +17,13 @@ import {
   set,
 } from 'firebase/database';
 import { database, ROOT } from './firebase.js';
-import { diffState, isEmptyDiff, mergeDay, stateFromSnapshot } from './sync-diff.js';
+import {
+  diffState,
+  isEmptyDiff,
+  mergeDay,
+  seedAccountUpdates,
+  stateFromSnapshot,
+} from './sync-diff.js';
 import { normalize } from './store.js';
 
 /**
@@ -153,4 +159,24 @@ export async function seedIfEmpty(state) {
     'settings/householdName': state.settings.householdName,
   });
   return true;
+}
+
+/**
+ * Makes sure every user account exists in the database with a working
+ * PIN. Safe to run on every load: it writes nothing when the accounts are
+ * already correct.
+ */
+export async function ensureAccounts(defaults) {
+  const db = database();
+  if (!db) return { fixed: [] };
+  const { get } = await import('firebase/database');
+  try {
+    const snap = await get(ref(db, `${ROOT}/users`));
+    const { updates, fixed } = seedAccountUpdates(snap.val(), defaults);
+    if (fixed.length > 0) await update(ref(db, ROOT), updates);
+    return { fixed };
+  } catch (error) {
+    console.error('Account check failed', error);
+    return { fixed: [] };
+  }
 }

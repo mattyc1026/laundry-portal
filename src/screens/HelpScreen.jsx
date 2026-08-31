@@ -27,7 +27,7 @@ const FAQ = [
   {
     q: 'What does the Towels badge mean?',
     a: [
-      'Towel duty rotates. Two households have it one week, the other two have it the next, and so on.',
+      'Towel duty rotates. Two users have it one week, the other two have it the next, and so on.',
       'If it is your week, wash, dry, fold and put away a load of household towels on your laundry day, on top of your own laundry. You will also see a reminder at the top of the calendar.',
     ],
   },

@@ -1,7 +1,7 @@
 /* ==========================================================================
    Firebase
 
-   Points at the household's existing Realtime Database project, recovered
+   Points at the existing Realtime Database project, recovered
    from the previous deployment so the portal keeps the same backend.
 
    The config is readable in the shipped bundle. That is normal and

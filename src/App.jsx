@@ -10,11 +10,18 @@ import AdminScreen from './screens/AdminScreen.jsx';
 import ToastStack from './ui/Toast.jsx';
 import { useToasts } from './hooks/useToasts.js';
 import { applyAccessibility, applyTheme } from './lib/themes.js';
-import { pushChanges, seedIfEmpty, subscribePortal, trackPresence } from './lib/sync.js';
+import {
+  ensureAccounts,
+  pushChanges,
+  seedIfEmpty,
+  subscribePortal,
+  trackPresence,
+} from './lib/sync.js';
 import { groupForUser, nextTowelDay } from './lib/schedule.js';
 import { todayKey } from './lib/date.js';
 import {
   ADMIN_USER,
+  defaultState,
   loadSession,
   loadState,
   recordSignIn,
@@ -76,7 +83,10 @@ export default function App() {
      first person to open the portal populates it rather than finding it
      blank. Runs once. */
   useEffect(() => {
-    seedIfEmpty(stateRef.current).catch(() => {});
+    const seeded = defaultState();
+    seedIfEmpty(stateRef.current)
+      .then(() => ensureAccounts(seeded.users))
+      .catch(() => {});
   }, []);
 
   useEffect(() => trackPresence(sessionId), [sessionId]);

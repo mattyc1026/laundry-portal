@@ -7,7 +7,7 @@
    admin view.
 
    Note on PINs: they are stored as entered. The portal holds a laundry
-   schedule and nothing else, and that is a deliberate call by the household
+   schedule and nothing else, which is a deliberate call
    rather than an oversight.
    ========================================================================== */
 
@@ -283,7 +283,7 @@ export function book(state, { key, groupId, start, end, actorId, mode = 'free', 
   if (!day) return fail(state, 'That date is not valid.');
   if (day.blocked) return fail(state, 'That day is blocked.');
   if (day.isPast) return fail(state, 'That day has already passed.');
-  if (!findGroup(state, groupId)) return fail(state, 'That household entry no longer exists.');
+  if (!findGroup(state, groupId)) return fail(state, 'That user no longer exists.');
   if (end - start <= 0) return fail(state, 'The end time has to be after the start time.');
 
   const current = bookingsOf(state, key);

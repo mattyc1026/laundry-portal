@@ -18,7 +18,7 @@
    tested on plain node.
    ========================================================================== */
 
-/** Fields that live per account rather than per household. */
+/** Fields that live per account rather than being shared by everyone. */
 export const PERSONAL_SETTINGS = ['theme', 'textScale', 'highContrast', 'reduceMotion'];
 
 /** Fields everyone shares. */
@@ -165,4 +165,32 @@ export function mergeDay(remote, local) {
 
 export function isEmptyDiff(updates) {
   return Object.keys(updates).length === 0;
+}
+
+/**
+ * Reconciles the seeded user accounts against the database.
+ *
+ * seedIfEmpty only ever fires on a completely empty tree, so a database
+ * seeded by an earlier build keeps whatever it was given first, even after
+ * the defaults are corrected. That is how accounts ended up in the portal
+ * with no PIN.
+ *
+ * This fills in any user account the database is missing or that has no
+ * usable PIN. An account with a PIN already set is never touched, so nobody
+ * who has changed theirs gets reset back to the default.
+ */
+export function seedAccountUpdates(remoteUsers, defaults) {
+  const updates = {};
+  const fixed = [];
+  const remote = remoteUsers && typeof remoteUsers === 'object' ? remoteUsers : {};
+
+  defaults.forEach((user) => {
+    const existing = remote[user.id];
+    const hasPin = existing && typeof existing.pin === 'string' && /^\d{4}$/.test(existing.pin);
+    if (hasPin) return;
+    updates[`users/${user.id}`] = { ...existing, ...user };
+    fixed.push(user.id);
+  });
+
+  return { updates, fixed };
 }

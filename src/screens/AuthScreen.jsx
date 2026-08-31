@@ -142,7 +142,7 @@ export default function AuthScreen({ state, dispatch, push, onSignedIn }) {
             {usernameField}
             <p className="field__hint" style={{ marginTop: -6 }}>
               If your name is already on the calendar, use the username the
-              household set up so your days stay yours.
+              already set up so your days stay yours.
             </p>
             <PinField label="Create a PIN" value={pin} onChange={setPin} autoComplete="new-password" />
             <PinField label="Confirm your PIN" value={pin2} onChange={setPin2} autoComplete="new-password" />

@@ -180,7 +180,7 @@ export default function SettingsSheet({ state, viewer, dispatch, push, onClose }
                 <div className="row__body">
                   <div className="row__title">Towel rotation</div>
                   <div className="row__sub">
-                    Turns towel duty on or off for the whole household
+                    Turns towel duty on or off for everyone
                   </div>
                 </div>
                 <Switch

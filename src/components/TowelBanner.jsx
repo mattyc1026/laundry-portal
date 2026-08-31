@@ -2,7 +2,7 @@ import Icon from '../ui/Icon.jsx';
 import { formatShortDate, relativeLabel } from '../lib/date.js';
 
 /**
- * Sits at the top of the calendar whenever the signed-in household has towel
+ * Sits at the top of the calendar whenever the signed-in user has towel
  * duty coming up, with what is actually expected of them. This is the only
  * banner in the app.
  */

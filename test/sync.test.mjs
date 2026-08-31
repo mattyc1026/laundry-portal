@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { diffState, mergeDay, stateFromSnapshot, isEmptyDiff } from '../src/lib/sync-diff.js';
+import {
+  diffState,
+  isEmptyDiff,
+  mergeDay,
+  seedAccountUpdates,
+  stateFromSnapshot,
+} from '../src/lib/sync-diff.js';
 import { book, defaultState, resetPin, updateSettings } from '../src/lib/store.js';
 import { toKey } from '../src/lib/date.js';
 
@@ -177,4 +183,43 @@ test('an empty database falls back to the seeded household', () => {
   assert.equal(state.users.length, fallback.users.length);
   assert.deepEqual(state.rotation, fallback.rotation);
   assert.deepEqual(state.overrides, {});
+});
+
+/* ---- account reconciliation ---------------------------------------------- */
+
+test('accounts missing a PIN in the database get repaired', () => {
+  const defaults = defaultState().users;
+  // The state a database seeded by an earlier build was left in.
+  const remote = {
+    matthewc: { id: 'matthewc', firstName: 'Matthew', lastName: 'Cunning', pin: '7420' },
+    miker: { id: 'miker', firstName: 'Michael', lastName: 'Rodriguez', pin: '' },
+    scottc: { id: 'scottc', firstName: 'Scott', lastName: 'Cunning', pin: '' },
+    starlac: { id: 'starlac', firstName: 'Starla', lastName: 'Cunning', pin: '' },
+  };
+
+  const { updates, fixed } = seedAccountUpdates(remote, defaults);
+
+  assert.deepEqual(fixed.sort(), ['alyssac', 'malakail', 'miker', 'scottc', 'starlac']);
+  assert.equal(updates['users/miker'].pin, '1473');
+  assert.equal(updates['users/miker'].lastName, 'Reaves', 'the wrong surname is corrected too');
+  assert.equal(updates['users/scottc'].pin, '5244');
+  assert.equal(updates['users/starlac'].pin, '4698');
+  assert.equal(updates['users/malakail'].pin, '1111', 'a wholly missing account is added');
+  assert.ok(!('users/matthewc' in updates), 'a working account is left alone');
+});
+
+test('a PIN someone changed is never reset to the default', () => {
+  const defaults = defaultState().users;
+  const remote = {};
+  defaults.forEach((u) => { remote[u.id] = { ...u, pin: '9999' }; });
+
+  const { updates, fixed } = seedAccountUpdates(remote, defaults);
+  assert.deepEqual(fixed, [], 'nothing to repair');
+  assert.deepEqual(updates, {}, 'and nothing is written');
+});
+
+test('an empty database gets every account', () => {
+  const defaults = defaultState().users;
+  const { fixed } = seedAccountUpdates(null, defaults);
+  assert.equal(fixed.length, 6);
 });
