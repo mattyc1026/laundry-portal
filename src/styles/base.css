@@ -1,0 +1,222 @@
+/* ==========================================================================
+   Base
+
+   Every colour here comes from the active theme's custom properties, set on
+   the root element by lib/themes.js. Nothing is hard coded, which is what
+   lets all 27 themes work without a single extra rule.
+   ========================================================================== */
+
+:root {
+  --text-scale: 1;
+
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 28px;
+  --r-2xl: 34px;
+  --r-pill: 999px;
+
+  /* The iOS sheet curve, an overshoot, and a plain standard ease. */
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --dur-fast: 140ms;
+  --dur-mid: 260ms;
+  --dur-slow: 420ms;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 26px 64px -20px rgba(0, 0, 0, 0.7);
+  --glow: 0 10px 34px -12px rgba(var(--accent-rgb), 0.55);
+
+  --tabbar-h: 60px;
+  --shell-max: 1240px;
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    'Segoe UI Variable', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-num: ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  font-family: var(--font);
+  /* One multiplier drives the whole type scale for the accessibility slider. */
+  font-size: calc(15px * var(--text-scale));
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--text-body);
+  background: var(--page-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The themed backdrop. Fixed so it never scrolls and stays cheap. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--bg);
+  background-attachment: fixed;
+}
+
+/* A slow drifting wash of the theme's accents. This is the "interactive"
+   part of the themes: each one moves in its own colours. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background:
+    radial-gradient(38rem 26rem at 18% 12%, rgba(var(--accent-rgb), 0.16), transparent 62%),
+    radial-gradient(34rem 24rem at 84% 8%, rgba(var(--accent2-rgb), 0.15), transparent 60%),
+    radial-gradient(30rem 24rem at 50% 96%, rgba(var(--accent-rgb), 0.10), transparent 64%);
+  animation: drift 26s ease-in-out infinite alternate;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4, p, figure { margin: 0; }
+h1, h2, h3, h4 { color: var(--text-heading); }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; }
+button:disabled { cursor: not-allowed; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+::selection { background: rgba(var(--accent-rgb), 0.32); }
+
+* { scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: var(--r-pill);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* ---- Utilities ----------------------------------------------------------- */
+
+.u-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-tabular { font-variant-numeric: tabular-nums; }
+.u-num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.u-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+.pressable {
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-mid) var(--ease-out),
+    opacity var(--dur-fast) linear;
+}
+.pressable:active:not(:disabled) { transform: scale(0.965); }
+.pressable:disabled { opacity: 0.42; }
+
+/* ---- Motion -------------------------------------------------------------- */
+
+@keyframes drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(2%, 2%, 0) scale(1.06); }
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes screen-in {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.995); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes rise-in {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes sheet-up { from { transform: translate3d(0, 100%, 0); } to { transform: none; } }
+@keyframes dialog-in {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate3d(0, 22px, 0) scale(0.94); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes toast-out { to { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.96); } }
+@keyframes shake {
+  10%, 90% { transform: translate3d(-2px, 0, 0); }
+  20%, 80% { transform: translate3d(4px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-7px, 0, 0); }
+  40%, 60% { transform: translate3d(7px, 0, 0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes sheen { to { background-position: 220% 0; } }
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.4); }
+  60% { box-shadow: 0 0 0 14px rgba(var(--accent-rgb), 0); }
+}
+
+/* Reduced motion, from the OS or from the in-app accessibility toggle. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+:root[data-motion='reduced'] .pressable:active:not(:disabled) { transform: none; }
+
+/* High contrast: firmer borders, brighter text, no decorative translucency. */
+:root[data-contrast='high'] {
+  --text-body: var(--text-heading);
+  --text-secondary: var(--text-heading);
+  --text-muted: var(--text-body);
+}
+:root[data-contrast='high'] body::after { opacity: 0; }
+:root[data-contrast='high'] .card,
+:root[data-contrast='high'] .week,
+:root[data-contrast='high'] .rows,
+:root[data-contrast='high'] .sheet {
+  border-width: 2px;
+  border-color: var(--text-body);
+  backdrop-filter: none;
+}
+:root[data-contrast='high'] .daycell { outline: 1px solid var(--border2); }

@@ -1,0 +1,39 @@
+{
+  "rules": {
+    "portal": {
+      "v3": {
+        ".read": true,
+        ".write": true,
+
+        "users": {
+          "$uid": {
+            ".validate": "newData.hasChildren(['id']) && newData.child('id').val() === $uid"
+          }
+        },
+
+        "overrides": {
+          "$date": {
+            ".validate": "$date.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
+            "bookings": {
+              "$index": {
+                "start": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1440" },
+                "end":   { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1440" }
+              }
+            }
+          }
+        },
+
+        "log": {
+          "$entry": {
+            ".validate": "newData.hasChildren(['action', 'actorId', 'at'])",
+            ".write": "!data.exists() || newData.val() === null"
+          }
+        },
+
+        "prefs": {
+          "$uid": { ".validate": "newData.hasChildren()" }
+        }
+      }
+    }
+  }
+}
