@@ -5,7 +5,7 @@ import Switch from '../ui/Switch.jsx';
 import Icon from '../ui/Icon.jsx';
 import PinField from '../ui/PinField.jsx';
 import { THEME_CATEGORIES, THEMES, previewOf, themesIn } from '../lib/themes.js';
-import { resetPin, updateSettings, userLabel } from '../lib/store.js';
+import { ADMIN_USER, resetPin, updateSettings, userLabel } from '../lib/store.js';
 import { groupForUser } from '../lib/schedule.js';
 import { haptic } from '../lib/haptics.js';
 
@@ -61,6 +61,9 @@ export default function SettingsSheet({ state, viewer, dispatch, push, onClose }
   const s = state.settings;
 
   const group = groupForUser(state, viewer.id);
+  // Text size, contrast and theme are personal. Towel rotation changes the
+  // schedule for everyone, so it stays with the admin.
+  const isAdmin = viewer.id === ADMIN_USER;
 
   function set(patch) {
     const r = dispatch((st) => updateSettings(st, patch));
@@ -171,18 +174,22 @@ export default function SettingsSheet({ state, viewer, dispatch, push, onClose }
                 onChange={(v) => set({ reduceMotion: v })}
               />
             </div>
-            <div className="row">
-              <Icon name="towel" size={17} />
-              <div className="row__body">
-                <div className="row__title">Towel rotation</div>
-                <div className="row__sub">Two households share towel duty each week</div>
+            {isAdmin ? (
+              <div className="row">
+                <Icon name="towel" size={17} />
+                <div className="row__body">
+                  <div className="row__title">Towel rotation</div>
+                  <div className="row__sub">
+                    Turns towel duty on or off for the whole household
+                  </div>
+                </div>
+                <Switch
+                  checked={s.towelRotation}
+                  label="Towel rotation"
+                  onChange={(v) => set({ towelRotation: v })}
+                />
               </div>
-              <Switch
-                checked={s.towelRotation}
-                label="Towel rotation"
-                onChange={(v) => set({ towelRotation: v })}
-              />
-            </div>
+            ) : null}
           </div>
         </div>
       ) : null}

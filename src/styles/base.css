@@ -46,14 +46,22 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+
+/* The accessibility text slider works by scaling the root font size. Every
+   font-size below is written in rem so they all follow it. Sizes that are
+   not type, such as icon boxes and spacing, stay in px so the layout keeps
+   its proportions instead of ballooning. */
+html {
+  -webkit-text-size-adjust: 100%;
+  font-size: calc(16px * var(--text-scale));
+}
 
 body {
   margin: 0;
   min-height: 100svh;
   font-family: var(--font);
   /* One multiplier drives the whole type scale for the accessibility slider. */
-  font-size: calc(15px * var(--text-scale));
+  font-size: 0.9375rem;
   line-height: 1.45;
   letter-spacing: -0.01em;
   color: var(--text-body);
