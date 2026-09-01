@@ -244,7 +244,6 @@ export default function CalendarScreen({ state, viewer, dispatch, push }) {
     <div className="screen">
       <div className="page-head">
         <h1 className="page-title">Schedule</h1>
-        <p className="page-sub">Tap any day to book it, take a slot, or block it.</p>
       </div>
 
       <Segmented options={VIEWS} value={view} onChange={setView} label="Calendar view" />

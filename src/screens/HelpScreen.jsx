@@ -46,7 +46,6 @@ export default function HelpScreen() {
     <div className="screen">
       <div className="page-head">
         <h1 className="page-title">Help</h1>
-        <p className="page-sub">How the portal works, in plain terms.</p>
       </div>
       <div className="faq">
         {FAQ.map((item, i) => (

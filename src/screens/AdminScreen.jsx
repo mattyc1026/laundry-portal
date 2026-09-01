@@ -43,7 +43,6 @@ export default function AdminScreen({ state, viewer, dispatch, push }) {
     <div className="screen">
       <div className="page-head">
         <h1 className="page-title">Admin</h1>
-        <p className="page-sub">Who has signed up, and everything that has happened.</p>
       </div>
 
       <div className="stat-grid">

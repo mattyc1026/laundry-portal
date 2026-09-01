@@ -92,7 +92,6 @@
 /* ---- Typography and sections --------------------------------------------- */
 
 .page-title { font-size: clamp(1.5625rem, 5vw, 2.0625rem); font-weight: 760; letter-spacing: -0.032em; line-height: 1.08; }
-.page-sub { margin-top: 5px; font-size: 0.875rem; color: var(--text-secondary); }
 .page-head { margin-bottom: 18px; }
 .section-head {
   display: flex; align-items: center; justify-content: space-between;
