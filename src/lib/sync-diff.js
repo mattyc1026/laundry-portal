@@ -93,13 +93,19 @@ export function diffState(prev, next, actorId) {
     });
   }
 
-  /* ---- Log entries are append only ------------------------------------- */
+  /* ---- Log entries: new ones are added, removed ones are deleted -------- */
+  // Deleting matters: without it, clearing the history only emptied this
+  // device, and the next snapshot from the database put every entry back.
   const prevIds = new Set((prev.log || []).map((e) => e.id));
+  const nextIds = new Set((next.log || []).map((e) => e.id));
   (next.log || [])
     .filter((entry) => !prevIds.has(entry.id))
     .forEach((entry) => {
       updates[`log/${entry.id}`] = entry;
     });
+  prevIds.forEach((id) => {
+    if (!nextIds.has(id)) updates[`log/${id}`] = null;
+  });
 
   return updates;
 }
@@ -138,7 +144,7 @@ export function stateFromSnapshot(snapshot, fallback, personal = {}) {
  * A genuine overlap is resolved in favour of the write that arrives second,
  * which is the one the person is watching happen.
  */
-export function mergeDay(remote, local) {
+export function mergeDay(remote, local, base = null) {
   if (!remote) return local;
   if (!local) return remote;
   if (local.blocked || remote.blocked) {
@@ -148,12 +154,17 @@ export function mergeDay(remote, local) {
   const remoteBookings = remote.bookings || [];
   const localBookings = local.bookings || [];
   const localIds = new Set(localBookings.map((b) => b.id));
+  // Bookings this device saw and then deliberately took away. Without this a
+  // removal was undone by the merge, because the removed booking looked like
+  // something new from another device.
+  const baseIds = new Set(((base && base.bookings) || []).map((b) => b.id));
 
   // Anything the remote has that we never saw and that does not collide with
   // what we just wrote is kept.
   const survivors = remoteBookings.filter(
     (r) =>
       !localIds.has(r.id) &&
+      !baseIds.has(r.id) &&
       !localBookings.some((l) => l.start < r.end && r.start < l.end)
   );
 

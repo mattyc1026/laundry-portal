@@ -1,3 +1,4 @@
+import { THEMES } from '../lib/themes.js';
 import { useState } from 'react';
 import Icon from '../ui/Icon.jsx';
 
@@ -34,7 +35,7 @@ const FAQ = [
   {
     q: 'Can I change how the app looks?',
     a: [
-      'Yes. The gear icon opens Settings, with 27 themes plus text size, high contrast and reduced motion.',
+      `Yes. The gear icon opens Settings, with ${Object.keys(THEMES).length} themes plus text size, high contrast and reduced motion.`,
       'Your choice is saved and stays put next time you sign in.',
     ],
   },

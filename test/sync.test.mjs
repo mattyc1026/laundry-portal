@@ -223,3 +223,26 @@ test('an empty database gets every account', () => {
   const { fixed } = seedAccountUpdates(null, defaults);
   assert.equal(fixed.length, 6);
 });
+
+import { clearLog, removeBooking } from '../src/lib/store.js';
+
+test('clearing the history deletes every old entry from the database', () => {
+  let prev = defaultState();
+  prev = book(prev, { key: future(1), groupId: 'malakai', start: 540, end: 720, actorId: 'malakail' }).state;
+  prev = book(prev, { key: future(2), groupId: 'malakai', start: 540, end: 720, actorId: 'malakail' }).state;
+  const oldIds = prev.log.map((e) => e.id);
+  const next = clearLog(prev, 'matthewc').state;
+  const updates = diffState(prev, next, 'matthewc');
+  oldIds.forEach((id) => assert.equal(updates[`log/${id}`], null));
+  assert.ok(updates[`log/${next.log[0].id}`]);
+});
+
+test('a removed booking is not brought back by the merge', () => {
+  const key = future(1);
+  let prev = book(defaultState(), { key, groupId: 'malakai', start: 540, end: 720, actorId: 'matthewc' }).state;
+  prev = book(prev, { key, groupId: 'scott-starla', start: 800, end: 900, actorId: 'matthewc' }).state;
+  const victim = prev.overrides[key].bookings.find((b) => b.groupId === 'malakai');
+  const next = removeBooking(prev, key, victim.id, 'matthewc').state;
+  const merged = mergeDay(prev.overrides[key], next.overrides[key], prev.overrides[key]);
+  assert.equal(merged.bookings.some((b) => b.id === victim.id), false);
+});

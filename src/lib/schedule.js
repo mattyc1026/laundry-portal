@@ -78,10 +78,28 @@ export function towelGroupsFor(state, weekStartKey) {
   return groups.slice(block * perWeek, block * perWeek + perWeek);
 }
 
-export function hasTowels(state, dateKey, groupId) {
+/** What the weekly rotation alone says, ignoring any admin override. */
+export function autoTowels(state, dateKey, groupId) {
   if (!state.settings.towelRotation) return false;
   const weekStartKey = toKey(startOfWeek(new Date(`${dateKey}T12:00:00`)));
   return towelGroupsFor(state, weekStartKey).includes(groupId);
+}
+
+/** The admin's manual choice for this group on this date, if there is one. */
+export function towelOverride(state, dateKey, groupId) {
+  const manual = state.overrides[dateKey]?.towels;
+  return manual && typeof manual[groupId] === 'boolean' ? manual[groupId] : null;
+}
+
+/**
+ * The rotation decides by default. The admin can switch the badge on or off
+ * for any group on any single date, and that choice wins for that date only,
+ * so the rotation carries on untouched every other day.
+ */
+export function hasTowels(state, dateKey, groupId) {
+  const manual = towelOverride(state, dateKey, groupId);
+  if (manual !== null) return manual;
+  return autoTowels(state, dateKey, groupId);
 }
 
 /* ---- Day resolution ------------------------------------------------------ */
@@ -131,6 +149,7 @@ export function resolveDay(state, key, reference = todayKey()) {
       label: groupLabel(state, b.groupId),
       allDay: isAllDay(b),
       towels: hasTowels(state, key, b.groupId),
+      towelsManual: towelOverride(state, key, b.groupId) !== null,
     }))
     .sort((a, b) => a.start - b.start);
 
@@ -157,10 +176,12 @@ export function resolveWeek(state, weekStart, reference = todayKey()) {
 export function bookingsOf(state, key) {
   const day = resolveDay(state, key);
   if (!day) return [];
-  return day.bookings.map(({ group, label, allDay, towels, ...b }) => ({
+  return day.bookings.map(({ group, label, allDay, towels, towelsManual, ...b }) => ({
     ...b,
-    // A rotation default becomes a real booking the moment it is edited.
-    id: b.fromRotation ? newBookingId() : b.id,
+    // A rotation default becomes a real booking the moment it is edited. Its
+    // id stays the same stable rotation id, so removing or editing it by id
+    // finds it. A fresh id here used to make those fail with "gone".
+    id: b.id,
     fromRotation: false,
   }));
 }
@@ -190,7 +211,7 @@ export function nextDayFor(state, userId, weeks = 8) {
 /** The viewer's next towel day, which drives the banner at the top. */
 export function nextTowelDay(state, userId, weeks = 8) {
   const group = groupForUser(state, userId);
-  if (!group || !state.settings.towelRotation) return null;
+  if (!group) return null;
   const reference = todayKey();
   for (const weekStart of windowWeeks(weeks)) {
     for (const day of resolveWeek(state, weekStart, reference)) {
@@ -205,6 +226,13 @@ export function nextTowelDay(state, userId, weeks = 8) {
 /** Days the viewer holds, offered as swap candidates. */
 export function myUpcomingBookings(state, userId, weeks = WEEKS_IN_VIEW) {
   const group = groupForUser(state, userId);
+  if (!group) return [];
+  return groupUpcomingBookings(state, group.id, weeks);
+}
+
+/** Days a given group holds. The admin uses this to swap on anyone's behalf. */
+export function groupUpcomingBookings(state, groupId, weeks = WEEKS_IN_VIEW) {
+  const group = findGroup(state, groupId);
   if (!group) return [];
   const reference = todayKey();
   const out = [];

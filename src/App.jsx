@@ -3,6 +3,7 @@ import AppShell from './components/AppShell.jsx';
 import SettingsSheet from './components/SettingsSheet.jsx';
 import TowelBanner from './components/TowelBanner.jsx';
 import WelcomeTip from './components/WelcomeTip.jsx';
+import ThemeFx from './components/ThemeFx.jsx';
 import AuthScreen from './screens/AuthScreen.jsx';
 import CalendarScreen from './screens/CalendarScreen.jsx';
 import HelpScreen from './screens/HelpScreen.jsx';
@@ -187,6 +188,7 @@ export default function App() {
   if (!viewer) {
     return (
       <>
+        <ThemeFx />
         <AuthScreen state={state} dispatch={dispatch} push={push} onSignedIn={signIn} />
         <ToastStack toasts={toasts} onDismiss={dismiss} />
       </>
@@ -195,6 +197,7 @@ export default function App() {
 
   return (
     <>
+      <ThemeFx />
       <AppShell
         viewerName={userLabel(state, viewer.id)}
         viewerColor={group?.color}

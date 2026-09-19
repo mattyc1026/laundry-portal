@@ -179,7 +179,7 @@ test('taking occupied time requires acknowledgement', () => {
   const sunday = future(0);
   const attempt = book(state, {
     key: sunday, groupId: 'matthew-michael', start: PM12, end: PM3,
-    actorId: 'matthewc', mode: 'replace', acknowledged: false,
+    actorId: 'miker', mode: 'replace', acknowledged: false,
   });
   assert.equal(attempt.result.ok, false);
   assert.match(attempt.result.message, /permission/i);
@@ -369,4 +369,98 @@ test('every household member is registered and can sign in', () => {
     assert.ok(groupForUser(state, id), `${id} is on the calendar`);
   });
   assert.equal(state.users.length, 6);
+});
+
+/* ---- Admin control ------------------------------------------------------- */
+
+import { editBooking, setTowels, clearLog } from '../src/lib/store.js';
+import { autoTowels } from '../src/lib/schedule.js';
+
+test('the admin can book anyone over existing time without the permission step', () => {
+  const state = defaultState();
+  const sunday = future(0);
+  const out = book(state, {
+    key: sunday, groupId: 'alyssa-josiah', start: PM12, end: PM3,
+    actorId: 'matthewc', mode: 'replace', acknowledged: false,
+  });
+  assert.equal(out.result.ok, true);
+  const day = resolveDay(out.state, sunday);
+  assert.ok(day.bookings.some((b) => b.groupId === 'alyssa-josiah' && b.start === PM12));
+});
+
+test('the admin can book a day that has passed, others cannot', () => {
+  const state = defaultState();
+  const d = new Date(); d.setDate(d.getDate() - 3);
+  const past = toKey(d);
+  const admin = book(state, { key: past, groupId: 'malakai', start: AM9, end: PM12, actorId: 'matthewc' });
+  assert.equal(admin.result.ok, true);
+  const other = book(state, { key: past, groupId: 'malakai', start: AM9, end: PM12, actorId: 'malakail' });
+  assert.equal(other.result.ok, false);
+});
+
+test('the admin can move a booking to a different user and time', () => {
+  const state = defaultState();
+  const sunday = future(0);
+  const day = resolveDay(state, sunday);
+  const first = book(state, { key: sunday, groupId: 'malakai', start: AM9, end: PM12, actorId: 'matthewc', mode: 'replace' });
+  const target = resolveDay(first.state, sunday).bookings.find((b) => b.start === AM9);
+  const out = editBooking(first.state, sunday, target.id, { groupId: 'scott-starla', start: PM3, end: PM6 }, 'matthewc');
+  assert.equal(out.result.ok, true);
+  const after = resolveDay(out.state, sunday);
+  assert.ok(after.bookings.some((b) => b.groupId === 'scott-starla' && b.start === PM3 && b.end === PM6));
+  assert.ok(day.bookings.length >= 1);
+});
+
+test('towel overrides win for one date only and the rotation carries on', () => {
+  const state = defaultState();
+  const sunday = future(0);
+  const nextSunday = toKey(addDays(new Date(`${sunday}T12:00:00`), 7));
+  const auto = autoTowels(state, sunday, 'malakai');
+  const out = setTowels(state, sunday, 'malakai', !auto, 'matthewc');
+  assert.equal(out.result.ok, true);
+  assert.equal(resolveDay(out.state, sunday).bookings[0].towels, !auto);
+  assert.equal(resolveDay(out.state, nextSunday).bookings[0].towels, autoTowels(state, nextSunday, 'malakai'));
+  // The rotation booking is still there, the override only touched towels.
+  assert.equal(resolveDay(out.state, sunday).bookings[0].fromRotation, true);
+  // Setting it back to the rotation's answer removes the override entirely.
+  const back = setTowels(out.state, sunday, 'malakai', auto, 'matthewc');
+  assert.equal(back.state.overrides[sunday], undefined);
+});
+
+test('only the admin can change towels', () => {
+  const out = setTowels(defaultState(), future(0), 'malakai', true, 'miker');
+  assert.equal(out.result.ok, false);
+});
+
+test('towel overrides survive normalize', () => {
+  const sunday = future(0);
+  const out = setTowels(defaultState(), sunday, 'malakai', true, 'matthewc');
+  const again = normalize(JSON.parse(JSON.stringify(out.state)));
+  assert.equal(resolveDay(again, sunday).bookings[0].towels, true);
+});
+
+test('retired themes fall back to dark', () => {
+  const s = defaultState();
+  s.settings.theme = 'forest';
+  assert.equal(normalize(s).settings.theme, 'dark');
+});
+
+test('clearing the log leaves only the clear entry', () => {
+  let s = defaultState();
+  s = book(s, { key: future(1), groupId: 'malakai', start: AM9, end: PM12, actorId: 'malakail' }).state;
+  const out = clearLog(s, 'matthewc');
+  assert.equal(out.state.log.length, 1);
+});
+
+test('a recurring rotation booking can be removed and edited', () => {
+  const state = defaultState();
+  const sunday = future(0);
+  const day = resolveDay(state, sunday);
+  const id = day.bookings[0].id;
+  const removed = removeBooking(state, sunday, id, 'matthewc');
+  assert.equal(removed.result.ok, true);
+  assert.equal(resolveDay(removed.state, sunday).bookings.length, 0);
+  const edited = editBooking(state, sunday, id, { start: AM9, end: PM12 }, 'matthewc');
+  assert.equal(edited.result.ok, true);
+  assert.equal(resolveDay(edited.state, sunday).bookings[0].start, AM9);
 });

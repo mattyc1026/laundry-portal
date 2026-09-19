@@ -13,7 +13,9 @@
 
 import { isValidKey, todayKey } from './date.js';
 import { applyBooking, conflictsFor, DAY_END, DAY_START, formatSlot } from './time.js';
+import { THEMES, DEFAULT_THEME } from './themes.js';
 import {
+  autoTowels,
   bookingsOf,
   findGroup,
   groupLabel,
@@ -145,6 +147,13 @@ export function normalize(raw) {
       }
       if (value.blocked === true) entry.blocked = true;
       if (value.cleared === true) entry.cleared = true;
+      if (value.towels && typeof value.towels === 'object') {
+        const towels = {};
+        Object.entries(value.towels).forEach(([groupId, on]) => {
+          if (groupIds.has(groupId) && typeof on === 'boolean') towels[groupId] = on;
+        });
+        if (Object.keys(towels).length > 0) entry.towels = towels;
+      }
       if (Object.keys(entry).length > 0) overrides[key] = entry;
     }
   );
@@ -176,7 +185,8 @@ export function normalize(raw) {
         typeof s.householdName === 'string' && s.householdName.trim()
           ? s.householdName.trim().slice(0, 40)
           : base.settings.householdName,
-      theme: typeof s.theme === 'string' ? s.theme : base.settings.theme,
+      // A theme that has since been retired falls back to the default.
+      theme: typeof s.theme === 'string' && THEMES[s.theme] ? s.theme : DEFAULT_THEME,
       textScale: Number.isFinite(scale) && scale >= 0.85 && scale <= 1.5 ? scale : 1,
       highContrast: s.highContrast === true,
       reduceMotion: s.reduceMotion === true,
@@ -277,12 +287,18 @@ export function userLabel(state, userId) {
  * `acknowledged` must be true for anything that displaces someone. The UI
  * sets it only after the person confirms they have permission.
  */
+export function isAdminId(actorId) {
+  return actorId === ADMIN_USER;
+}
+
 export function book(state, { key, groupId, start, end, actorId, mode = 'free', acknowledged = false, swapWith = null }) {
+  // The admin has full control: past days, anyone's time, no permission step.
+  const admin = isAdminId(actorId);
   if (!isValidKey(key)) return fail(state, 'That date is not valid.');
   const day = resolveDay(state, key);
   if (!day) return fail(state, 'That date is not valid.');
-  if (day.blocked) return fail(state, 'That day is blocked.');
-  if (day.isPast) return fail(state, 'That day has already passed.');
+  if (day.blocked) return fail(state, 'That day is blocked. Unblock it first.');
+  if (day.isPast && !admin) return fail(state, 'That day has already passed.');
   if (!findGroup(state, groupId)) return fail(state, 'That user no longer exists.');
   if (end - start <= 0) return fail(state, 'The end time has to be after the start time.');
 
@@ -290,10 +306,10 @@ export function book(state, { key, groupId, start, end, actorId, mode = 'free', 
   const incoming = { id: newBookingId(), groupId, start, end, note: '' };
   const clashes = conflictsFor(current, incoming);
 
-  if (clashes.length > 0 && !acknowledged) {
+  if (clashes.length > 0 && !acknowledged && !admin) {
     return fail(state, 'Confirm you have their permission before taking this time.');
   }
-  if (clashes.some((c) => c.groupId === groupId)) {
+  if (!admin && clashes.some((c) => c.groupId === groupId)) {
     return fail(state, 'That group already has overlapping time on this day.');
   }
 
@@ -311,12 +327,12 @@ export function book(state, { key, groupId, start, end, actorId, mode = 'free', 
     if (!otherGroupId) return fail(state, 'There is nobody to swap with on that day.');
 
     const swapDay = resolveDay(next, swapWith.key);
-    if (!swapDay || swapDay.isPast || swapDay.blocked) {
+    if (!swapDay || (swapDay.isPast && !admin) || swapDay.blocked) {
       return fail(state, 'That day is not available to give away.');
     }
     const swapCurrent = bookingsOf(next, swapWith.key);
     const mine = swapCurrent.find((b) => b.id === swapWith.bookingId || b.groupId === groupId);
-    if (!mine) return fail(state, 'You do not have a booking on the day you offered.');
+    if (!mine) return fail(state, `${label} does not have a booking on the day offered.`);
 
     const handover = { ...mine, id: newBookingId(), groupId: otherGroupId };
     const applied = applyBooking(
@@ -349,7 +365,7 @@ export function book(state, { key, groupId, start, end, actorId, mode = 'free', 
   }
 
   next = logged(next, actorId, 'book', `${label} booked ${formatSlot(incoming)} on ${key}`);
-  return ok(next, 'Booked.');
+  return ok(next, admin ? `${label} booked.` : 'Booked.');
 }
 
 export function removeBooking(state, key, bookingId, actorId) {
@@ -368,6 +384,7 @@ export function editBooking(state, key, bookingId, patch, actorId) {
   const target = current.find((b) => b.id === bookingId);
   if (!target) return fail(state, 'That booking is gone.');
   const updated = { ...target, ...patch };
+  if (!findGroup(state, updated.groupId)) return fail(state, 'That user no longer exists.');
   if (updated.end - updated.start <= 0) {
     return fail(state, 'The end time has to be after the start time.');
   }
@@ -376,10 +393,49 @@ export function editBooking(state, key, bookingId, patch, actorId) {
     updated
   );
   const next = setBookings(state, key, bookings);
-  return ok(
-    logged(next, actorId, 'edit', `${groupLabel(state, updated.groupId)} time changed on ${key}`),
-    'Updated.'
+  const changes = [];
+  if (updated.groupId !== target.groupId) {
+    changes.push(`moved from ${groupLabel(state, target.groupId)} to ${groupLabel(state, updated.groupId)}`);
+  }
+  if (updated.start !== target.start || updated.end !== target.end) {
+    changes.push(`time changed to ${formatSlot(updated)}`);
+  }
+  const detail = changes.length
+    ? `${groupLabel(state, updated.groupId)} on ${key}: ${changes.join(', ')}`
+    : `${groupLabel(state, updated.groupId)} on ${key} saved without changes`;
+  return ok(logged(next, actorId, 'edit', detail), 'Updated.');
+}
+
+/**
+ * Admin only. Switches the towel badge on or off for one group on one date.
+ * Choosing what the rotation would have said anyway drops the override, so
+ * the date quietly follows the rotation again.
+ */
+export function setTowels(state, key, groupId, on, actorId) {
+  if (!isAdminId(actorId)) return fail(state, 'Only the admin can change towel duty.');
+  if (!isValidKey(key)) return fail(state, 'That date is not valid.');
+  if (!findGroup(state, groupId)) return fail(state, 'That user no longer exists.');
+
+  const overrides = { ...state.overrides };
+  const prev = { ...(overrides[key] || {}) };
+  const towels = { ...(prev.towels || {}) };
+  if (Boolean(on) === autoTowels(state, key, groupId)) delete towels[groupId];
+  else towels[groupId] = Boolean(on);
+
+  if (Object.keys(towels).length > 0) prev.towels = towels;
+  else delete prev.towels;
+
+  if (Object.keys(prev).length > 0) overrides[key] = prev;
+  else delete overrides[key];
+
+  const label = groupLabel(state, groupId);
+  const next = logged(
+    { ...state, overrides },
+    actorId,
+    on ? 'towels-on' : 'towels-off',
+    `${label} towels ${on ? 'on' : 'off'} for ${key}`
   );
+  return ok(next, on ? `Towels on for ${label}.` : `Towels off for ${label}.`);
 }
 
 /** Blocking hides the day. Unblocking leaves it open, not back on rotation. */

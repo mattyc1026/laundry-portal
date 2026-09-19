@@ -77,15 +77,27 @@ everyone.
 The Admin tab is visible only to `matthewc`. Michael signs in separately as
 `miker` and does not see it, even though they share one calendar entry.
 
-The tab itself is read only: who has signed up and a history of every action
-taken in the portal. The admin's extra powers appear on the day sheet, where
-blocking and restoring a day are shown only to them.
+The tab shows who has signed up and a history of every action taken in the
+portal. The history scrolls inside its own frame, and Clear empties it for
+everyone.
+
+The admin has full control from the day sheet, on any day including past
+ones: book anyone, edit anyone's time or move a booking to someone else,
+remove anyone, switch the towel badge on or off per person per day (the
+weekly rotation carries on for every other day), block, and restore.
 
 ## Settings
 
-The gear icon opens 27 themes in three groups, plus text size, high contrast
-and reduced motion. Themes are the 21 recovered from the previous deployment
-plus Aurora, Vaporwave, Terminal, Candy, Valentine's Day and St. Patrick's Day.
+The gear icon opens 16 themes in two groups, plus text size, high contrast
+and reduced motion.
+
+- Core: Dark, Light, Pastel, Neon, Transparent, Black & White, Multicolor
+- Aesthetic: Ocean, Sunset, Cyberpunk, Aurora, Vaporwave, Terminal,
+  Macintosh, Candy, Barbie
+
+Palettes live in `src/lib/themes.js`. The moving effects live in
+`src/styles/themes.css`, and Multicolor's living palette is driven by
+`src/lib/theme-motion.js`.
 
 Every theme defines the same 39 custom properties, so switching is one pass
 over the root element and no theme can render half applied. The previous build

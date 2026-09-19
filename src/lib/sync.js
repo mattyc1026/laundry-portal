@@ -104,7 +104,8 @@ export async function pushChanges(prev, next, actorId) {
         runTransaction(ref(db, `${ROOT}/${path}`), (remote) => {
           const local = updates[path];
           if (local === null) return null; // a deliberate clear wins
-          return mergeDay(remote, local);
+          const key = path.slice('overrides/'.length);
+          return mergeDay(remote, local, prev.overrides?.[key] || null);
         })
       )
     );

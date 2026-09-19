@@ -25,12 +25,13 @@ const ACTION_LABEL = {
   signin: 'Signed in',
   'pin-reset': 'Reset a PIN',
   'clear-log': 'Cleared history',
+  'towels-on': 'Turned towels on',
+  'towels-off': 'Turned towels off',
 };
 
 /**
- * Read-only oversight for matthewc. Everything that changes the schedule is
- * done from the day itself, by whoever needs it, so nothing here edits the
- * calendar.
+ * Oversight for matthewc. Schedule changes, including the admin's full
+ * control over everyone's bookings and towels, happen from the day itself.
  */
 export default function AdminScreen({ state, viewer, dispatch, push }) {
   const [tab, setTab] = useState('people');
@@ -157,7 +158,7 @@ export default function AdminScreen({ state, viewer, dispatch, push }) {
               <p className="empty__text">Bookings, swaps and blocks will appear here.</p>
             </div>
           ) : (
-            <div className="rows">
+            <div className="rows history-scroll" tabIndex={0} aria-label="Activity history">
               {state.log.map((entry) => (
                 <div className="logline" key={entry.id}>
                   <span className="logline__dot" />

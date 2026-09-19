@@ -618,3 +618,15 @@ body.is-locked { overflow: hidden; }
 .syncdot--connecting { background: var(--warning); animation: glow-pulse 1.6s ease-out infinite; }
 .syncdot--offline { background: var(--text-faint); }
 .syncdot--error { background: var(--danger); }
+
+/* ---- Admin history ------------------------------------------------------- */
+
+/* The history scrolls inside its own frame so the page stays one height no
+   matter how much has been logged. */
+.history-scroll {
+  max-height: min(62vh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
