@@ -3,14 +3,37 @@ import Segmented from '../ui/Segmented.jsx';
 import Icon from '../ui/Icon.jsx';
 import Avatar from '../ui/Avatar.jsx';
 import { formatTimestamp } from '../lib/date.js';
-import { groupForUser } from '../lib/schedule.js';
-import { clearLog, userLabel } from '../lib/store.js';
+import { activeGroups, findGroup, groupForUser, TOWEL_MODES } from '../lib/schedule.js';
+import {
+  clearLog,
+  createGroup,
+  dismantleGroup,
+  setGroupDay,
+  setGroupTowels,
+  setUserGroup,
+  updateGroup,
+  userLabel,
+} from '../lib/store.js';
 import { haptic } from '../lib/haptics.js';
 
 const TABS = [
   { value: 'people', label: 'Users' },
+  { value: 'groups', label: 'Groups' },
   { value: 'history', label: 'History' },
 ];
+
+const DOW_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const COLOR_SWATCHES = [
+  '#ff375f', '#ff9f0a', '#c8b400', '#30d158',
+  '#00b8c4', '#0a84ff', '#5e5ce6', '#bf5af2',
+];
+
+/** Which weekday, if any, a group currently auto books. */
+function dayFor(state, groupId) {
+  const i = state.rotation.findIndex((g) => g === groupId);
+  return i >= 0 ? i : null;
+}
 
 const ACTION_LABEL = {
   book: 'Booked',
@@ -27,6 +50,12 @@ const ACTION_LABEL = {
   'clear-log': 'Cleared history',
   'towels-on': 'Turned towels on',
   'towels-off': 'Turned towels off',
+  'group-create': 'Created a group',
+  'group-edit': 'Edited a group',
+  'group-day': 'Changed a recurring day',
+  'group-towels': 'Changed group towel duty',
+  'group-member': 'Moved someone between groups',
+  'group-dismantle': 'Dismantled a group',
 };
 
 /**
@@ -111,6 +140,10 @@ export default function AdminScreen({ state, viewer, dispatch, push }) {
         </div>
       ) : null}
 
+      {tab === 'groups' ? (
+        <GroupsPanel state={state} viewer={viewer} dispatch={dispatch} push={push} />
+      ) : null}
+
       {tab === 'history' ? (
         <div style={{ marginTop: 18 }}>
           <div className="section-head">
@@ -177,6 +210,334 @@ export default function AdminScreen({ state, viewer, dispatch, push }) {
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Everything the admin can control about how a group shows up on the
+ * calendar: its name, colour, recurring weekday, towel duty, and members.
+ * Dismantling a group here never touches any booking already on the
+ * calendar, only the recurring day going forward.
+ */
+function GroupsPanel({ state, viewer, dispatch, push }) {
+  const groups = useMemo(() => activeGroups(state), [state]);
+  const unassigned = useMemo(
+    () => state.users.filter((u) => u.pin && !groupForUser(state, u.id)),
+    [state]
+  );
+  const [creating, setCreating] = useState(false);
+
+  function run(action) {
+    const r = dispatch((s) => action(s, viewer.id));
+    push(r.message, r.type);
+    haptic(r.ok === false ? 'warning' : 'light');
+    return r;
+  }
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div className="section-head">
+        <h2 className="section-title">Groups</h2>
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm pressable"
+          onClick={() => setCreating((v) => !v)}
+        >
+          <Icon name="plus" size={14} />
+          New group
+        </button>
+      </div>
+
+      {creating ? (
+        <NewGroupForm
+          state={state}
+          unassigned={unassigned}
+          onCancel={() => setCreating(false)}
+          onCreate={(fields) => {
+            const r = run((s, actorId) => createGroup(s, fields, actorId));
+            if (r.ok !== false) setCreating(false);
+          }}
+        />
+      ) : null}
+
+      <div className="rows">
+        {groups.map((group) => (
+          <GroupCard
+            key={group.id}
+            state={state}
+            group={group}
+            unassigned={unassigned}
+            run={run}
+          />
+        ))}
+      </div>
+
+      {unassigned.length > 0 ? (
+        <>
+          <div className="section-head" style={{ marginTop: 18 }}>
+            <h2 className="section-title">Not in a group</h2>
+          </div>
+          <p className="field__hint">
+            {unassigned.map((u) => userLabel(state, u.id)).join(', ')} do not appear on the
+            calendar until added to a group.
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function NewGroupForm({ state, unassigned, onCancel, onCreate }) {
+  const [label, setLabel] = useState('');
+  const [color, setColor] = useState(COLOR_SWATCHES[0]);
+  const [members, setMembers] = useState([]);
+
+  return (
+    <div className="card card--pad" style={{ marginBottom: 14 }}>
+      <div className="field">
+        <label className="field__label" htmlFor="new-group-name">Group name</label>
+        <input
+          id="new-group-name"
+          className="input"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="e.g. Scott + Starla + Michael"
+        />
+      </div>
+
+      <div className="field">
+        <span className="field__label">Color</span>
+        <ColorSwatches value={color} onChange={setColor} />
+      </div>
+
+      <div className="field">
+        <span className="field__label">Members</span>
+        {unassigned.length === 0 ? (
+          <p className="field__hint">Everyone is already in a group.</p>
+        ) : (
+          <div className="rows">
+            {unassigned.map((u) => (
+              <label className="check-row" key={u.id}>
+                <input
+                  type="checkbox"
+                  checked={members.includes(u.id)}
+                  onChange={(e) =>
+                    setMembers((prev) =>
+                      e.target.checked ? [...prev, u.id] : prev.filter((m) => m !== u.id)
+                    )
+                  }
+                />
+                {userLabel(state, u.id)}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="btn-row">
+        <button
+          type="button"
+          className="btn btn--primary btn--sm pressable"
+          disabled={!label.trim() || members.length === 0}
+          onClick={() => onCreate({ label, color, members })}
+        >
+          Create
+        </button>
+        <button type="button" className="btn btn--ghost btn--sm pressable" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ColorSwatches({ value, onChange }) {
+  return (
+    <div className="chip-row" role="group" aria-label="Color">
+      {COLOR_SWATCHES.map((c) => (
+        <button
+          key={c}
+          type="button"
+          className="iconbtn pressable"
+          aria-label={c}
+          aria-pressed={value === c}
+          onClick={() => onChange(c)}
+          style={{
+            background: c,
+            borderRadius: '50%',
+            width: 28,
+            height: 28,
+            border: value === c ? '2px solid var(--text)' : '2px solid transparent',
+          }}
+        />
+      ))}
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label="Custom color"
+        style={{ width: 28, height: 28, padding: 0, border: 'none', background: 'none' }}
+      />
+    </div>
+  );
+}
+
+function GroupCard({ state, group, unassigned, run }) {
+  const [label, setLabel] = useState(group.label);
+  const [confirmDismantle, setConfirmDismantle] = useState(false);
+  const [addingMember, setAddingMember] = useState('');
+  const day = dayFor(state, group.id);
+
+  function saveLabelIfChanged() {
+    const trimmed = label.trim();
+    if (trimmed && trimmed !== group.label) {
+      run((s, actorId) => updateGroup(s, group.id, { label: trimmed }, actorId));
+    } else {
+      setLabel(group.label);
+    }
+  }
+
+  return (
+    <div className="card card--pad" style={{ marginBottom: 14 }}>
+      <div className="field">
+        <label className="field__label" htmlFor={`label-${group.id}`}>Name</label>
+        <input
+          id={`label-${group.id}`}
+          className="input"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onBlur={saveLabelIfChanged}
+        />
+      </div>
+
+      <div className="field">
+        <span className="field__label">Color</span>
+        <ColorSwatches
+          value={group.color}
+          onChange={(color) => run((s, actorId) => updateGroup(s, group.id, { color }, actorId))}
+        />
+      </div>
+
+      <div className="field">
+        <label className="field__label" htmlFor={`day-${group.id}`}>Recurring day</label>
+        <select
+          id={`day-${group.id}`}
+          className="select"
+          value={day === null ? '' : String(day)}
+          onChange={(e) => {
+            const v = e.target.value;
+            run((s, actorId) => setGroupDay(s, group.id, v === '' ? null : Number(v), actorId));
+          }}
+        >
+          <option value="">None</option>
+          {DOW_LABELS.map((d, i) => (
+            <option key={d} value={i}>{d}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label className="field__label" htmlFor={`towels-${group.id}`}>Towel duty</label>
+        <select
+          id={`towels-${group.id}`}
+          className="select"
+          value={group.towels}
+          onChange={(e) =>
+            run((s, actorId) => setGroupTowels(s, group.id, e.target.value, actorId))
+          }
+        >
+          {TOWEL_MODES.map((m) => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <span className="field__label">Members</span>
+        <div className="rows">
+          {group.members.map((m) => (
+            <div className="row" key={m}>
+              <Avatar name={userLabel(state, m)} color={group.color} size="sm" />
+              <div className="row__body">
+                <div className="row__title">{userLabel(state, m)}</div>
+              </div>
+              <button
+                type="button"
+                className="iconbtn pressable"
+                aria-label={`Remove ${userLabel(state, m)} from ${group.label}`}
+                onClick={() => run((s, actorId) => setUserGroup(s, m, null, actorId))}
+              >
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {unassigned.length > 0 ? (
+          <div className="btn-row" style={{ marginTop: 8 }}>
+            <select
+              className="select"
+              value={addingMember}
+              onChange={(e) => setAddingMember(e.target.value)}
+              aria-label={`Add someone to ${group.label}`}
+            >
+              <option value="">Add someone…</option>
+              {unassigned.map((u) => (
+                <option key={u.id} value={u.id}>{userLabel(state, u.id)}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm pressable"
+              disabled={!addingMember}
+              onClick={() => {
+                run((s, actorId) => setUserGroup(s, addingMember, group.id, actorId));
+                setAddingMember('');
+              }}
+            >
+              Add
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="btn-row" style={{ marginTop: 4 }}>
+        {confirmDismantle ? (
+          <>
+            <button
+              type="button"
+              className="btn btn--danger btn--sm pressable"
+              onClick={() => {
+                run((s, actorId) => dismantleGroup(s, group.id, actorId));
+                setConfirmDismantle(false);
+              }}
+            >
+              Confirm dismantle
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm pressable"
+              onClick={() => setConfirmDismantle(false)}
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm pressable"
+            onClick={() => setConfirmDismantle(true)}
+          >
+            <Icon name="trash" size={14} />
+            Dismantle group
+          </button>
+        )}
+      </div>
+      <p className="field__hint">
+        Dismantling removes this group's recurring day and members only. Bookings already on the
+        calendar are not changed.
+      </p>
     </div>
   );
 }

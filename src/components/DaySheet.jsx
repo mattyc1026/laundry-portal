@@ -12,7 +12,7 @@ import {
   suggestSlot,
   toTimeValue,
 } from '../lib/time.js';
-import { bookingsOf, groupForUser, groupUpcomingBookings } from '../lib/schedule.js';
+import { activeGroups, bookingsOf, groupForUser, groupUpcomingBookings } from '../lib/schedule.js';
 import {
   ADMIN_USER,
   book,
@@ -80,7 +80,7 @@ export default function DaySheet({ day, state, viewer, dispatch, push, onClose }
   const [resolution, setResolution] = useState('replace'); // replace | swap
   const [swapKey, setSwapKey] = useState('');
   // The admin can book on behalf of anyone. Everyone else books as themselves.
-  const [bookAs, setBookAs] = useState(() => myGroup?.id || state.groups[0]?.id || '');
+  const [bookAs, setBookAs] = useState(() => myGroup?.id || activeGroups(state)[0]?.id || '');
   // The booking the admin is editing, held by its position in the day.
   const [editing, setEditing] = useState(null); // { index, groupId, start, end }
 
@@ -319,7 +319,14 @@ export default function DaySheet({ day, state, viewer, dispatch, push, onClose }
               value={editing.groupId}
               onChange={(e) => setEditing((p) => ({ ...p, groupId: e.target.value }))}
             >
-              {state.groups.map((g) => (
+              {(() => {
+                const list = activeGroups(state);
+                // If this booking still belongs to a group the admin has
+                // since dismantled, keep it selectable so the field shows
+                // its current value instead of jumping to something else.
+                const current = state.groups.find((g) => g.id === editing.groupId);
+                return current && current.archived ? [current, ...list] : list;
+              })().map((g) => (
                 <option key={g.id} value={g.id}>{g.label}</option>
               ))}
             </select>
@@ -390,7 +397,7 @@ export default function DaySheet({ day, state, viewer, dispatch, push, onClose }
                 value={bookAs}
                 onChange={(e) => setBookAs(e.target.value)}
               >
-                {state.groups.map((g) => (
+                {activeGroups(state).map((g) => (
                   <option key={g.id} value={g.id}>{g.label}</option>
                 ))}
               </select>

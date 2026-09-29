@@ -15,12 +15,16 @@ import { isValidKey, todayKey } from './date.js';
 import { applyBooking, conflictsFor, DAY_END, DAY_START, formatSlot } from './time.js';
 import { THEMES, DEFAULT_THEME } from './themes.js';
 import {
+  activeGroups,
   autoTowels,
   bookingsOf,
   findGroup,
+  groupForUser,
   groupLabel,
+  isTowelMode,
   newBookingId,
   resolveDay,
+  TOWEL_MODES,
 } from './schedule.js';
 
 export const STORAGE_KEY = 'cflp.v3';
@@ -47,10 +51,10 @@ export function defaultState() {
     ],
     // How people appear on the calendar. Pairs render as one booking.
     groups: [
-      { id: 'malakai', label: 'MALAKAI', members: ['malakail'], color: '#ff375f' },
-      { id: 'scott-starla', label: 'SCOTT + STARLA', members: ['scottc', 'starlac'], color: '#c8b400' },
-      { id: 'alyssa-josiah', label: 'ALYSSA + JOSIAH', members: ['alyssac'], color: '#30d158' },
-      { id: 'matthew-michael', label: 'MATTHEW + MICHAEL', members: ['matthewc', 'miker'], color: '#00b8c4' },
+      { id: 'malakai', label: 'MALAKAI', members: ['malakail'], color: '#ff375f', towels: 'a', archived: false },
+      { id: 'scott-starla', label: 'SCOTT + STARLA', members: ['scottc', 'starlac'], color: '#c8b400', towels: 'a', archived: false },
+      { id: 'alyssa-josiah', label: 'ALYSSA + JOSIAH', members: ['alyssac'], color: '#30d158', towels: 'b', archived: false },
+      { id: 'matthew-michael', label: 'MATTHEW + MICHAEL', members: ['matthewc', 'miker'], color: '#00b8c4', towels: 'b', archived: false },
     ],
     // Index 0 is Sunday.
     rotation: [
@@ -95,6 +99,49 @@ function sanitizeBooking(raw, groupIds) {
   };
 }
 
+/**
+ * Realtime Database hands back a list with gaps as an object keyed by index,
+ * and drops empty lists altogether. This turns either shape into an array.
+ */
+function asList(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') {
+    return Object.keys(value)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((k) => value[k]);
+  }
+  return [];
+}
+
+/** Recurring weekday slots by index, whatever shape the database returned. */
+function rotationSlots(value) {
+  const slots = Array.from({ length: 7 }, () => null);
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => {
+      if (i < 7) slots[i] = v;
+    });
+  } else if (value && typeof value === 'object') {
+    Object.entries(value).forEach(([k, v]) => {
+      const i = Number(k);
+      if (Number.isInteger(i) && i >= 0 && i < 7) slots[i] = v;
+    });
+  }
+  return slots;
+}
+
+/**
+ * What the old automatic towel rotation did for a group, so data saved before
+ * towels became a per group setting keeps behaving exactly the same. Groups
+ * shared the duty in blocks of two, alternating week to week.
+ */
+function legacyTowelMode(index, count) {
+  if (count <= 0) return 'off';
+  const perWeek = Math.max(1, Math.ceil(count / 2));
+  const blocks = Math.ceil(count / perWeek);
+  if (blocks <= 1) return 'weekly';
+  return Math.floor(index / perWeek) === 0 ? 'a' : 'b';
+}
+
 export function normalize(raw) {
   const base = defaultState();
   if (!raw || typeof raw !== 'object') return base;
@@ -118,24 +165,43 @@ export function normalize(raw) {
   }
 
   const userIds = new Set(users.map((u) => u.id));
-  const groups = (Array.isArray(raw.groups) ? raw.groups : base.groups)
+  const groups = asList(raw.groups && (Array.isArray(raw.groups) || typeof raw.groups === 'object') ? raw.groups : base.groups)
     .map((g, i) => {
       if (!g || typeof g.id !== 'string' || !g.label) return null;
       return {
         id: g.id,
         label: String(g.label).slice(0, 40),
-        members: (Array.isArray(g.members) ? g.members : []).filter((m) => userIds.has(m)),
+        members: asList(g.members).filter((m) => userIds.has(m)),
         color: typeof g.color === 'string' ? g.color : base.groups[i % base.groups.length].color,
+        towels: isTowelMode(g.towels) ? g.towels : null,
+        archived: g.archived === true,
       };
     })
     .filter(Boolean);
 
-  const groupIds = new Set(groups.map((g) => g.id));
-
-  const rotation = Array.from({ length: 7 }, (_, i) => {
-    const v = Array.isArray(raw.rotation) ? raw.rotation[i] : base.rotation[i];
-    return typeof v === 'string' && groupIds.has(v) ? v : null;
+  // Data saved before towels were a per group setting has no value yet. Fill
+  // it in from what the old automatic rotation would have done.
+  const inUse = groups.filter((g) => !g.archived);
+  groups.forEach((g) => {
+    if (g.towels !== null) return;
+    g.towels = g.archived ? 'off' : legacyTowelMode(inUse.indexOf(g), inUse.length);
   });
+
+  // An archived group holds no recurring day, no members and no towel duty,
+  // but stays so its one off bookings keep their name and colour.
+  groups.forEach((g) => {
+    if (g.archived) {
+      g.members = [];
+      g.towels = 'off';
+    }
+  });
+
+  const groupIds = new Set(groups.map((g) => g.id));
+  const activeIds = new Set(inUse.map((g) => g.id));
+
+  const rotation = rotationSlots(raw.rotation === undefined || raw.rotation === null ? base.rotation : raw.rotation).map(
+    (v) => (typeof v === 'string' && activeIds.has(v) ? v : null)
+  );
 
   const overrides = {};
   Object.entries(raw.overrides && typeof raw.overrides === 'object' ? raw.overrides : {}).forEach(
@@ -463,6 +529,154 @@ export function resetDay(state, key, actorId) {
   delete overrides[key];
   const next = { ...state, overrides };
   return ok(logged(next, actorId, 'reset', `${key} reset to the recurring schedule`), 'Back on the recurring schedule.');
+}
+
+/* ---- Groups (admin only) --------------------------------------------------
+   One panel in Admin controls everything about how a group shows up: its
+   name, its calendar colour, which weekday it auto books, its towel duty,
+   and who its members are. Dismantling a group never touches any booking
+   that is already on the calendar, only its recurring weekday going forward.
+   ---------------------------------------------------------------------- */
+
+function newGroupId(state) {
+  const used = new Set(state.groups.map((g) => g.id));
+  let n = state.groups.length + 1;
+  let id = `group-${n}`;
+  while (used.has(id)) {
+    n += 1;
+    id = `group-${n}`;
+  }
+  return id;
+}
+
+/**
+ * Creates a group out of one or more users who are not already in another
+ * active group. Starts with no recurring day and towels off; the admin sets
+ * those afterward the same way as for any other group.
+ */
+export function createGroup(state, { label, members, color }, actorId) {
+  if (!isAdminId(actorId)) return fail(state, 'Only the admin can create groups.');
+  const name = (label || '').trim();
+  if (!name) return fail(state, 'Give the group a name.');
+  const ids = [...new Set((members || []).filter((m) => state.users.some((u) => u.id === m)))];
+  if (ids.length === 0) return fail(state, 'Pick at least one person for the group.');
+  const taken = ids.filter((m) => groupForUser(state, m));
+  if (taken.length > 0) {
+    return fail(state, `${taken.map((m) => userLabel(state, m)).join(', ')} ${taken.length > 1 ? 'are' : 'is'} already in a group.`);
+  }
+  const group = {
+    id: newGroupId(state),
+    label: name.slice(0, 40),
+    members: ids,
+    color: color || '#0a84ff',
+    towels: 'off',
+    archived: false,
+  };
+  const next = logged({ ...state, groups: [...state.groups, group] }, actorId, 'group-create', `Created group ${group.label}`);
+  return ok(next, `${group.label} created.`);
+}
+
+/** Renames a group, or changes its calendar colour, or both. */
+export function updateGroup(state, groupId, patch, actorId) {
+  if (!isAdminId(actorId)) return fail(state, 'Only the admin can edit groups.');
+  const group = findGroup(state, groupId);
+  if (!group || group.archived) return fail(state, 'That group no longer exists.');
+  const label = patch.label !== undefined ? String(patch.label).trim().slice(0, 40) : group.label;
+  if (!label) return fail(state, 'A group needs a name.');
+  const color = patch.color !== undefined ? patch.color : group.color;
+  const groups = state.groups.map((g) => (g.id === groupId ? { ...g, label, color } : g));
+  const next = logged({ ...state, groups }, actorId, 'group-edit', `${group.label} updated`);
+  return ok(next, 'Saved.');
+}
+
+/** Sets a group's towel duty mode: off, weekly, or alternating A/B. */
+export function setGroupTowels(state, groupId, towels, actorId) {
+  if (!isAdminId(actorId)) return fail(state, 'Only the admin can change towel duty.');
+  if (!isTowelMode(towels)) return fail(state, 'That is not a valid towel setting.');
+  const group = findGroup(state, groupId);
+  if (!group || group.archived) return fail(state, 'That group no longer exists.');
+  const groups = state.groups.map((g) => (g.id === groupId ? { ...g, towels } : g));
+  const label = TOWEL_MODES.find((m) => m.value === towels)?.label || towels;
+  const next = logged({ ...state, groups }, actorId, 'group-towels', `${group.label} towel duty set to ${label}`);
+  return ok(next, 'Saved.');
+}
+
+/**
+ * Sets which weekday a group auto books, 0 (Sunday) through 6 (Saturday), or
+ * null for no recurring day. If another group already has that day, the two
+ * groups trade: the other group takes whatever day (or none) this group had.
+ */
+export function setGroupDay(state, groupId, dow, actorId) {
+  if (!isAdminId(actorId)) return fail(state, 'Only the admin can change the recurring schedule.');
+  const group = findGroup(state, groupId);
+  if (!group || group.archived) return fail(state, 'That group no longer exists.');
+  if (dow !== null && (!Number.isInteger(dow) || dow < 0 || dow > 6)) {
+    return fail(state, 'That is not a valid day.');
+  }
+
+  const rotation = [...state.rotation];
+  const previousDow = rotation.findIndex((g) => g === groupId);
+  const holder = dow !== null ? rotation[dow] : null;
+
+  if (previousDow >= 0) rotation[previousDow] = null;
+  if (dow !== null) rotation[dow] = groupId;
+  if (holder && holder !== groupId && previousDow >= 0) rotation[previousDow] = holder;
+
+  const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const detail =
+    dow === null
+      ? `${group.label} recurring day removed`
+      : holder && holder !== groupId
+        ? `${group.label} moved to ${DOW_NAMES[dow]}, swapped with ${groupLabel(state, holder)}`
+        : `${group.label} recurring day set to ${DOW_NAMES[dow]}`;
+
+  const next = logged({ ...state, rotation }, actorId, 'group-day', detail);
+  return ok(next, 'Saved.');
+}
+
+/**
+ * Moves a person into a group, taking them out of whatever active group they
+ * were in first. Does not touch any booking already on the calendar.
+ */
+export function setUserGroup(state, userId, groupId, actorId) {
+  if (!isAdminId(actorId)) return fail(state, 'Only the admin can move people between groups.');
+  if (!state.users.some((u) => u.id === userId)) return fail(state, 'That user does not exist.');
+  const target = groupId ? findGroup(state, groupId) : null;
+  if (groupId && (!target || target.archived)) return fail(state, 'That group no longer exists.');
+
+  const groups = state.groups.map((g) => {
+    if (g.archived) return g;
+    const members = g.members.filter((m) => m !== userId);
+    if (g.id === groupId) members.push(userId);
+    return { ...g, members };
+  });
+
+  const detail = target
+    ? `${userLabel(state, userId)} moved to ${target.label}`
+    : `${userLabel(state, userId)} removed from their group`;
+  const next = logged({ ...state, groups }, actorId, 'group-member', detail);
+  return ok(next, 'Saved.');
+}
+
+/**
+ * Dismantles a group: it stops appearing in pickers, its recurring day opens
+ * up, and its members become unassigned. Every booking that already exists,
+ * including one off bookings and past history, is left exactly as it was;
+ * the group record itself stays (marked archived) so those bookings keep
+ * showing its name and colour instead of turning into "Unassigned".
+ */
+export function dismantleGroup(state, groupId, actorId) {
+  if (!isAdminId(actorId)) return fail(state, 'Only the admin can dismantle a group.');
+  const group = findGroup(state, groupId);
+  if (!group || group.archived) return fail(state, 'That group no longer exists.');
+
+  const groups = state.groups.map((g) =>
+    g.id === groupId ? { ...g, members: [], towels: 'off', archived: true } : g
+  );
+  const rotation = state.rotation.map((g) => (g === groupId ? null : g));
+
+  const next = logged({ ...state, groups, rotation }, actorId, 'group-dismantle', `${group.label} dismantled`);
+  return ok(next, `${group.label} dismantled. Existing bookings are unchanged.`);
 }
 
 /* ---- Accounts ------------------------------------------------------------ */

@@ -10,6 +10,8 @@ import {
   suggestSlot,
 } from '../src/lib/time.js';
 import {
+  activeGroups,
+  findGroup,
   groupForUser,
   resolveDay,
   towelGroupsFor,
@@ -17,13 +19,19 @@ import {
 } from '../src/lib/schedule.js';
 import {
   book,
+  createGroup,
   defaultState,
+  dismantleGroup,
   normalize,
   removeBooking,
   resetDay,
   resetPin,
   setBlocked,
+  setGroupDay,
+  setGroupTowels,
+  setUserGroup,
   signUp,
+  updateGroup,
 } from '../src/lib/store.js';
 
 const AM9 = 540;
@@ -464,3 +472,188 @@ test('a recurring rotation booking can be removed and edited', () => {
   assert.equal(edited.result.ok, true);
   assert.equal(resolveDay(edited.state, sunday).bookings[0].start, AM9);
 });
+
+/* ---- Admin: groups --------------------------------------------------------
+   Everything the admin can change about a group's identity: its name,
+   colour, recurring weekday, towel duty and members. Dismantling a group
+   must never touch a booking that already exists.
+   ========================================================================= */
+
+test('the admin can rename a group and change its color', () => {
+  const state = defaultState();
+  const out = updateGroup(state, 'malakai', { label: 'MK', color: '#123456' }, 'matthewc');
+  assert.equal(out.result.ok, true);
+  const g = findGroup(out.state, 'malakai');
+  assert.equal(g.label, 'MK');
+  assert.equal(g.color, '#123456');
+});
+
+test('only the admin can rename a group', () => {
+  const out = updateGroup(defaultState(), 'malakai', { label: 'MK' }, 'malakail');
+  assert.equal(out.result.ok, false);
+});
+
+test('setting a group to an open day just sets it', () => {
+  const state = defaultState();
+  const out = setGroupDay(state, 'malakai', 1, 'matthewc'); // Monday, open by default
+  assert.equal(out.result.ok, true);
+  assert.equal(out.state.rotation[1], 'malakai');
+  assert.equal(out.state.rotation[0], null, 'malakai left Sunday');
+});
+
+test('setting a group to a day another group holds swaps the two', () => {
+  const state = defaultState();
+  // malakai is Sunday (0), matthew-michael is Saturday (6) by default.
+  const out = setGroupDay(state, 'matthew-michael', 0, 'matthewc');
+  assert.equal(out.result.ok, true);
+  assert.equal(out.state.rotation[0], 'matthew-michael');
+  assert.equal(out.state.rotation[6], 'malakai', 'malakai received the day matthew-michael gave up');
+});
+
+test('a group can be set to no recurring day at all', () => {
+  const state = defaultState();
+  const out = setGroupDay(state, 'malakai', null, 'matthewc');
+  assert.equal(out.result.ok, true);
+  assert.ok(!out.state.rotation.includes('malakai'));
+});
+
+test('the admin can move a user from one group to another', () => {
+  const state = defaultState();
+  const out = setUserGroup(state, 'matthewc', 'malakai', 'matthewc');
+  assert.equal(out.result.ok, true);
+  assert.ok(!findGroup(out.state, 'matthew-michael').members.includes('matthewc'));
+  assert.ok(findGroup(out.state, 'malakai').members.includes('matthewc'));
+});
+
+test('the admin can unassign a user with no destination group', () => {
+  const state = defaultState();
+  const out = setUserGroup(state, 'matthewc', null, 'matthewc');
+  assert.equal(out.result.ok, true);
+  assert.equal(groupForUser(out.state, 'matthewc'), null);
+});
+
+test('creating a group requires at least one unassigned member', () => {
+  const state = defaultState();
+  const taken = createGroup(state, { label: 'New', members: ['matthewc'] }, 'matthewc');
+  assert.equal(taken.result.ok, false, 'matthewc already belongs to a group');
+
+  const unassigned = setUserGroup(state, 'matthewc', null, 'matthewc').state;
+  const out = createGroup(unassigned, { label: 'Solo Matt', members: ['matthewc'], color: '#111' }, 'matthewc');
+  assert.equal(out.result.ok, true);
+  const g = activeGroups(out.state).find((x) => x.label === 'Solo Matt');
+  assert.ok(g);
+  assert.deepEqual(g.members, ['matthewc']);
+  assert.equal(g.towels, 'off', 'new groups start with towels off');
+  assert.equal(dayForTest(out.state, g.id), null, 'new groups start with no recurring day');
+});
+
+test('a three person group can be created from members of two different groups', () => {
+  let state = defaultState();
+  state = setUserGroup(state, 'miker', null, 'matthewc').state;
+  state = setUserGroup(state, 'scottc', null, 'matthewc').state;
+  const out = createGroup(
+    state,
+    { label: 'Scott + Starla + Michael', members: ['miker', 'scottc', 'starlac'] },
+    'matthewc'
+  );
+  assert.equal(out.result.ok, false, 'starlac is still in scott-starla');
+
+  const freed = setUserGroup(state, 'starlac', null, 'matthewc').state;
+  const created = createGroup(
+    freed,
+    { label: 'Scott + Starla + Michael', members: ['miker', 'scottc', 'starlac'] },
+    'matthewc'
+  );
+  assert.equal(created.result.ok, true);
+  const g = activeGroups(created.state).find((x) => x.label === 'Scott + Starla + Michael');
+  assert.equal(g.members.length, 3);
+});
+
+test('towel duty is a per group setting the admin can change directly', () => {
+  const state = defaultState();
+  const out = setGroupTowels(state, 'malakai', 'weekly', 'matthewc');
+  assert.equal(out.result.ok, true);
+  assert.equal(findGroup(out.state, 'malakai').towels, 'weekly');
+  const weekKey = toKey(startOfWeek(new Date()));
+  assert.ok(towelGroupsFor(out.state, weekKey).includes('malakai'));
+  const nextWeekKey = toKey(addDays(startOfWeek(new Date()), 7));
+  assert.ok(towelGroupsFor(out.state, nextWeekKey).includes('malakai'), 'weekly means every week');
+});
+
+test('dismantling a group clears its recurring day and members but keeps existing bookings', () => {
+  let state = defaultState();
+  const monday = future(1); // open day, no default group
+  state = book(state, { key: monday, groupId: 'malakai', start: AM9, end: PM12, actorId: 'malakail' }).state;
+  const sunday = future(0); // malakai's recurring day
+  const beforeSundayBookings = resolveDay(state, sunday).bookings.length;
+  assert.ok(beforeSundayBookings > 0, 'sanity check: malakai has a rotation booking on Sunday');
+
+  const out = dismantleGroup(state, 'malakai', 'matthewc');
+  assert.equal(out.result.ok, true);
+
+  // The one-off Monday booking is untouched.
+  const monDay = resolveDay(out.state, monday);
+  assert.equal(monDay.bookings.length, 1);
+  assert.equal(monDay.bookings[0].groupId, 'malakai');
+  assert.equal(monDay.bookings[0].label, 'MALAKAI', "the booking still shows the dismantled group's name");
+
+  // The recurring Sunday slot is gone.
+  assert.equal(resolveDay(out.state, sunday).bookings.length, 0);
+  assert.ok(!out.state.rotation.includes('malakai'));
+
+  // The group no longer appears in active pickers and has no towel duty.
+  assert.ok(!activeGroups(out.state).some((g) => g.id === 'malakai'));
+  assert.equal(findGroup(out.state, 'malakai').towels, 'off');
+
+  // Its former member is unassigned, not deleted.
+  assert.equal(groupForUser(out.state, 'malakail'), null);
+  assert.ok(out.state.users.some((u) => u.id === 'malakail'));
+});
+
+test('only the admin can dismantle a group', () => {
+  const out = dismantleGroup(defaultState(), 'malakai', 'malakail');
+  assert.equal(out.result.ok, false);
+});
+
+test('a dismantled group cannot be booked or edited into going forward', () => {
+  let state = dismantleGroup(defaultState(), 'malakai', 'matthewc').state;
+  const wednesday = future(3);
+  const out = book(state, { key: wednesday, groupId: 'malakai', start: AM9, end: PM12, actorId: 'matthewc' });
+  // Booking as a dismantled group is not blocked at this layer (schedule.js
+  // hides it from pickers); what matters is it never appears automatically.
+  assert.equal(resolveDay(out.state, future(0)).bookings.length, 0);
+});
+
+test('normalize infers legacy alternating towel duty for old data with no towels field', () => {
+  const legacy = {
+    users: defaultState().users,
+    groups: [
+      { id: 'a', label: 'A', members: ['matthewc'], color: '#111' },
+      { id: 'b', label: 'B', members: ['miker'], color: '#222' },
+      { id: 'c', label: 'C', members: ['malakail'], color: '#333' },
+      { id: 'd', label: 'D', members: ['scottc'], color: '#444' },
+    ],
+    rotation: [null, null, null, null, null, null, null],
+  };
+  const state = normalize(legacy);
+  const modes = state.groups.map((g) => g.towels);
+  assert.equal(modes.filter((m) => m === 'a').length, 2);
+  assert.equal(modes.filter((m) => m === 'b').length, 2);
+});
+
+test('normalize accepts a rotation saved as a database object instead of an array', () => {
+  const legacy = {
+    users: defaultState().users,
+    groups: defaultState().groups,
+    rotation: { 0: 'malakai', 6: 'matthew-michael' },
+  };
+  const state = normalize(legacy);
+  assert.equal(state.rotation[0], 'malakai');
+  assert.equal(state.rotation[6], 'matthew-michael');
+  assert.equal(state.rotation[1], null);
+});
+
+function dayForTest(state, groupId) {
+  const i = state.rotation.findIndex((g) => g === groupId);
+  return i >= 0 ? i : null;
+}

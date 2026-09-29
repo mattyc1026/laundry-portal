@@ -23,9 +23,18 @@ export function findGroup(state, groupId) {
   return state.groups.find((g) => g.id === groupId) || null;
 }
 
+/**
+ * Groups that are currently in use. A dismantled group is kept in the data
+ * (marked archived) so any one-off bookings it already holds keep their name
+ * and colour, but it never appears in a picker and has no recurring day.
+ */
+export function activeGroups(state) {
+  return state.groups.filter((g) => !g.archived);
+}
+
 /** The group a signed-in username belongs to. */
 export function groupForUser(state, userId) {
-  return state.groups.find((g) => g.members.includes(userId)) || null;
+  return activeGroups(state).find((g) => g.members.includes(userId)) || null;
 }
 
 export function groupLabel(state, groupId) {
@@ -34,7 +43,7 @@ export function groupLabel(state, groupId) {
 
 /** Groups a person may book on behalf of. Everyone books as their own group. */
 export function bookableGroups(state) {
-  return state.groups;
+  return activeGroups(state);
 }
 
 /* ---- Week generation ----------------------------------------------------- */
@@ -48,25 +57,30 @@ export function windowWeeks(count = WEEKS_IN_VIEW, from = new Date()) {
 /* ---- Towels -------------------------------------------------------------- */
 
 /**
- * Towel duty covers two groups per week and alternates. With four groups in
- * the rotation, the first two share one week and the other two share the
- * next, then it repeats.
+ * Each group has a towel setting chosen by the admin:
+ *   off     never on towel duty
+ *   weekly  on towel duty every week
+ *   a       on towel duty in "A" weeks
+ *   b       on towel duty in "B" weeks
+ * A and B weeks alternate.
  */
-export function rotationGroups(state) {
-  const seen = [];
-  state.rotation.forEach((groupId) => {
-    if (groupId && !seen.includes(groupId)) seen.push(groupId);
-  });
-  return seen;
+export const TOWEL_MODES = [
+  { value: 'off', label: 'Off' },
+  { value: 'weekly', label: 'Every week' },
+  { value: 'a', label: 'Alternating, A weeks' },
+  { value: 'b', label: 'Alternating, B weeks' },
+];
+
+export function isTowelMode(value) {
+  return TOWEL_MODES.some((m) => m.value === value);
 }
 
-export function towelGroupsFor(state, weekStartKey) {
-  const groups = rotationGroups(state);
-  if (groups.length === 0) return [];
-  const perWeek = Math.max(1, Math.ceil(groups.length / 2));
-  const blocks = Math.ceil(groups.length / perWeek);
-  // Anchored to the epoch week so the cycle is stable across devices and
-  // does not shift when the app is opened on a different day.
+/**
+ * Which alternating block a week falls in: 0 for A weeks, 1 for B weeks.
+ * Anchored to the epoch week so the cycle is stable across devices and does
+ * not shift when the app is opened on a different day.
+ */
+export function towelBlockFor(weekStartKey) {
   const weekIndex = Math.floor(
     Date.UTC(
       Number(weekStartKey.slice(0, 4)),
@@ -74,8 +88,19 @@ export function towelGroupsFor(state, weekStartKey) {
       Number(weekStartKey.slice(8, 10))
     ) / 604800000
   );
-  const block = ((weekIndex % blocks) + blocks) % blocks;
-  return groups.slice(block * perWeek, block * perWeek + perWeek);
+  return ((weekIndex % 2) + 2) % 2;
+}
+
+export function towelGroupsFor(state, weekStartKey) {
+  const block = towelBlockFor(weekStartKey);
+  return activeGroups(state)
+    .filter(
+      (g) =>
+        g.towels === 'weekly' ||
+        (g.towels === 'a' && block === 0) ||
+        (g.towels === 'b' && block === 1)
+    )
+    .map((g) => g.id);
 }
 
 /** What the weekly rotation alone says, ignoring any admin override. */
